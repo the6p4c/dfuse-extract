@@ -8,4 +8,4 @@ Extract DfuSe images (.dfu) into plain binary files.
 ### Extract images and image elements
 `$ dfuse-extract.py dfuse_file --extract`
 
-Image elements will be saved into the current directory with the name `<image index>_<element index>_0x<address>.bin`.
+Image elements will be saved into the current directory with the name `image<image index>_element<element index>_0x<address>.bin`.
