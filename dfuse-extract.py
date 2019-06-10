@@ -61,20 +61,17 @@ class DfuseFile:
         f.seek(0)
 
         if dfu_suffix.signature != DFU_SUFFIX_SIGNATURE:
-            print('Error: suffix signature mismatch', file=sys.stderr)
-            return
+            raise RuntimeError('Suffix signature mismatch')
 
         crc_data = f.read()[:-DFU_SUFFIX_CRC_LEN]
         crc = dfu_crc.dfu_crc(crc_data)
         f.seek(0)
 
         if dfu_suffix.crc != crc:
-            print('Error: suffix CRC mismatch{}'.format(
-                ' (ignored)' if self.ignore_crc else ''
-            ), file=sys.stderr)
-
-            if not self.ignore_crc:
-                return
+            if self.ignore_crc:
+                print('Warning: suffix CRC mismatch (ignored)', file=sys.stderr)
+            else:
+                raise RuntimeError('Suffix CRC mismatch (ignore with --ignore-crc)')
 
         return dfu_suffix
 
@@ -87,11 +84,10 @@ class DfuseFile:
         dfu_prefix = DFUPrefix(*struct.unpack('< 5s B I B', dfu_prefix))
 
         if dfu_prefix.signature != DFU_PREFIX_SIGNATURE:
-            print('Error: prefix signature mismatch', file=sys.stderr)
-            return
+            raise RuntimeError('Prefix signature mismatch')
 
         if dfu_prefix.version != DFU_PREFIX_VERSION:
-            print('Error: version mismatch', file=sys.stderr)
+            raise RuntimeError('Version mismatch')
             return
 
         return dfu_prefix
@@ -212,7 +208,11 @@ def save_metadata(dfuse_file, metadata_file):
 def main():
     args = parse_args()
 
-    dfuse_file = DfuseFile(args.dfuse_file, ignore_crc=args.ignore_crc)
+    try:
+        dfuse_file = DfuseFile(args.dfuse_file, ignore_crc=args.ignore_crc)
+    except RuntimeError as e:
+        print('Parse error: {}'.format(e), file=sys.stderr)
+        return
 
     if args.action == 'list':
         action_list(dfuse_file)
