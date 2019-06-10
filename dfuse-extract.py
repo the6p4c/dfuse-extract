@@ -20,10 +20,12 @@ TargetPrefix = collections.namedtuple(
 )
 
 Image = collections.namedtuple('Image', 'alternate_setting target_name elements')
-ImageElement = collections.namedtuple('ImageElement', 'address data')
+ImageElement = collections.namedtuple('ImageElement', 'address size data')
 
 class DfuseFile:
-    def __init__(self, f):
+    def __init__(self, f, read_data=True):
+        self.read_data = read_data
+
         dfu_prefix = self.read_dfu_prefix(f)
 
         self.images = []
@@ -72,9 +74,15 @@ class DfuseFile:
         image_element_header = f.read(IMAGE_ELEMENT_HEADER_LEN)
         address, size = struct.unpack('< I I', image_element_header)
 
-        data = f.read(size)
+        if self.read_data:
+            data = f.read(size)
+        else:
+            data = None
 
-        return ImageElement(address, data)
+            FROM_CURRENT = 1
+            f.seek(size, FROM_CURRENT)
+
+        return ImageElement(address, size, data)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -103,7 +111,7 @@ def action_list(dfuse_file):
         print('Image {}:'.format(image_index))
         for image_element_index, image_element in enumerate(image.elements):
             print('\t0x{0:X} ({0}) bytes at 0x{1:X}'.format(
-                len(image_element.data), image_element.address
+                image_element.size, image_element.address
             ))
 
     print()
@@ -125,7 +133,9 @@ def action_extract(dfuse_file):
 
 def main():
     args = parse_args()
-    dfuse_file = DfuseFile(args.dfuse_file)
+
+    read_data = args.action == 'extract'
+    dfuse_file = DfuseFile(args.dfuse_file, read_data)
 
     if args.action == 'list':
         action_list(dfuse_file)
