@@ -1,6 +1,8 @@
 # dfuse-extract
 Extract DfuSe images (.dfu) into plain binary files.
 
+DfuSe is the format of DFU firmware images used by ST, and most commonly on their STM32 line of microcontrollers.
+
 ## Usage
 ### List images and image elements
 `$ dfuse-extract.py dfuse_file` or `$ dfuse-extract.py dfuse_file --list`
