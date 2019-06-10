@@ -62,9 +62,12 @@ class DfuseFile:
             image_element = self.read_image_element(f)
             elements.append(image_element)
 
+        # boolean value stored in 4 bytes - need to parse it
+        has_name = target_prefix.is_target_named != 0
+
         return Image(
             target_prefix.alternate_setting,
-            target_prefix.target_name if target_prefix.is_target_named else None,
+            target_prefix.target_name.decode('ascii') if has_name else None,
             elements
         )
 
@@ -108,9 +111,13 @@ def parse_args():
 
 def action_list(dfuse_file):
     for image_index, image in enumerate(dfuse_file.images):
-        print('Image {}:'.format(image_index))
+        print('Image {} (alternate setting = 0x{:X}{}):'.format(
+            image_index,
+            image.alternate_setting,
+            f', target name \'{image.target_name}\'' if image.target_name else ''
+        ))
         for image_element_index, image_element in enumerate(image.elements):
-            print('\t0x{0:X} ({0}) bytes at 0x{1:X}'.format(
+            print('\tElement of 0x{0:X} ({0}) bytes at 0x{1:X}'.format(
                 image_element.size, image_element.address
             ))
 
