@@ -8,6 +8,7 @@
 
 import argparse
 import collections
+import json
 import struct
 import sys
 
@@ -111,6 +112,12 @@ def parse_args():
             '\'image<image index>_element<element index>_0x<address>.bin)\'.'
     )
 
+    parser.add_argument(
+        '--save-metadata', type=argparse.FileType('w'),
+        dest='metadata_file', metavar='filename',
+        help='Save metadata to a JSON file (during list or extract).'
+    )
+
     return parser.parse_args()
 
 def action_list(dfuse_file):
@@ -142,6 +149,27 @@ def action_extract(dfuse_file):
                 image_index, image_element_index, filename
             ))
 
+def save_metadata(dfuse_file, metadata_file):
+    def image_element_metadata(image_element):
+        return {
+            'address': image_element.address,
+            'size': image_element.size
+        }
+
+    def image_metadata(image):
+        image_metadata = {
+            'alternate_setting': image.alternate_setting,
+            'elements': [image_element_metadata(x) for x in image.elements]
+        }
+
+        if image.target_name:
+            image_metadata['target_name'] = image.target_name
+
+        return image_metadata
+
+    metadata = [image_metadata(image) for image in dfuse_file.images]
+    json.dump(metadata, metadata_file, sort_keys=True)
+
 def main():
     args = parse_args()
 
@@ -152,6 +180,9 @@ def main():
         action_list(dfuse_file)
     elif args.action == 'extract':
         action_extract(dfuse_file)
+
+    if args.metadata_file:
+        save_metadata(dfuse_file, args.metadata_file)
 
 if __name__ == '__main__':
     main()
