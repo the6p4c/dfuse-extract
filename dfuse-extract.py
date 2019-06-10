@@ -5,12 +5,20 @@
 # Note: the specification blatantly lies that the DFU Prefix, Target Prefix and
 # Image Element structures are big endian. In reality, they are stored in little
 # endian.
+# DFU Suffix structure and CRC calcluation from
+# https://www.usb.org/sites/default/files/DFU_1.1.pdf
 
 import argparse
 import collections
 import json
 import struct
 import sys
+
+import dfu_crc
+
+DFUSuffix = collections.namedtuple(
+        'DFUSuffix', 'device usb_pid usb_vid dfu_spec signature length crc'
+)
 
 DFUPrefix = collections.namedtuple(
     'DFUPrefix', 'signature version file_size image_count'
@@ -21,22 +29,54 @@ TargetPrefix = collections.namedtuple(
 )
 
 Image = collections.namedtuple('Image', 'alternate_setting target_name elements')
-ImageElement = collections.namedtuple('ImageElement', 'address size data')
+ImageElement = collections.namedtuple('ImageElement', 'address data')
 
 def c_str_to_str(c_str):
     # From https://stackoverflow.com/a/5076070/3492369
     return c_str.split(b'\0', 1)[0].decode('ascii')
 
 class DfuseFile:
-    def __init__(self, f, read_data=True):
-        self.read_data = read_data
+    def __init__(self, f, ignore_crc=False):
+        self.ignore_crc = ignore_crc
 
+        self.dfu_suffix = self.read_dfu_suffix(f)
         dfu_prefix = self.read_dfu_prefix(f)
 
         self.images = []
         for _ in range(dfu_prefix.image_count):
             image = self.read_image(f)
             self.images.append(image)
+
+    def read_dfu_suffix(self, f):
+        DFU_SUFFIX_LEN = 16
+        DFU_SUFFIX_CRC_LEN = 4
+        DFU_SUFFIX_SIGNATURE = bytes('UFD', 'ascii')
+
+        FROM_END = 2
+        f.seek(-DFU_SUFFIX_LEN, FROM_END)
+
+        dfu_suffix = f.read(DFU_SUFFIX_LEN)
+        dfu_suffix = DFUSuffix(*struct.unpack('< H H H H 3s B I', dfu_suffix))
+
+        f.seek(0)
+
+        if dfu_suffix.signature != DFU_SUFFIX_SIGNATURE:
+            print('Error: suffix signature mismatch', file=sys.stderr)
+            return
+
+        crc_data = f.read()[:-DFU_SUFFIX_CRC_LEN]
+        crc = dfu_crc.dfu_crc(crc_data)
+        f.seek(0)
+
+        if dfu_suffix.crc != crc:
+            print('Error: suffix CRC mismatch{}'.format(
+                ' (ignored)' if self.ignore_crc else ''
+            ), file=sys.stderr)
+
+            if not self.ignore_crc:
+                return
+
+        return dfu_suffix
 
     def read_dfu_prefix(self, f):
         DFU_PREFIX_LEN = 11
@@ -47,7 +87,7 @@ class DfuseFile:
         dfu_prefix = DFUPrefix(*struct.unpack('< 5s B I B', dfu_prefix))
 
         if dfu_prefix.signature != DFU_PREFIX_SIGNATURE:
-            print('Error: signature mismatch', file=sys.stderr)
+            print('Error: prefix signature mismatch', file=sys.stderr)
             return
 
         if dfu_prefix.version != DFU_PREFIX_VERSION:
@@ -82,15 +122,9 @@ class DfuseFile:
         image_element_header = f.read(IMAGE_ELEMENT_HEADER_LEN)
         address, size = struct.unpack('< I I', image_element_header)
 
-        if self.read_data:
-            data = f.read(size)
-        else:
-            data = None
+        data = f.read(size)
 
-            FROM_CURRENT = 1
-            f.seek(size, FROM_CURRENT)
-
-        return ImageElement(address, size, data)
+        return ImageElement(address, data)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -113,6 +147,11 @@ def parse_args():
     )
 
     parser.add_argument(
+        '--ignore-crc', action='store_true',
+        help='Ignore CRC errors'
+    )
+
+    parser.add_argument(
         '--save-metadata', type=argparse.FileType('w'),
         dest='metadata_file', metavar='filename',
         help='Save metadata to a JSON file (during list or extract).'
@@ -129,7 +168,7 @@ def action_list(dfuse_file):
         ))
         for image_element_index, image_element in enumerate(image.elements):
             print('\tElement of 0x{0:X} ({0}) bytes at 0x{1:X}'.format(
-                image_element.size, image_element.address
+                len(image_element.data), image_element.address
             ))
 
     print()
@@ -153,7 +192,7 @@ def save_metadata(dfuse_file, metadata_file):
     def image_element_metadata(image_element):
         return {
             'address': image_element.address,
-            'size': image_element.size
+            'size': len(image_element)
         }
 
     def image_metadata(image):
@@ -173,8 +212,7 @@ def save_metadata(dfuse_file, metadata_file):
 def main():
     args = parse_args()
 
-    read_data = args.action == 'extract'
-    dfuse_file = DfuseFile(args.dfuse_file, read_data)
+    dfuse_file = DfuseFile(args.dfuse_file, ignore_crc=args.ignore_crc)
 
     if args.action == 'list':
         action_list(dfuse_file)
