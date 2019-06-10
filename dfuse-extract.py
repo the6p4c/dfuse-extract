@@ -22,6 +22,10 @@ TargetPrefix = collections.namedtuple(
 Image = collections.namedtuple('Image', 'alternate_setting target_name elements')
 ImageElement = collections.namedtuple('ImageElement', 'address size data')
 
+def c_str_to_str(c_str):
+    # From https://stackoverflow.com/a/5076070/3492369
+    return c_str.split(b'\0', 1)[0].decode('ascii')
+
 class DfuseFile:
     def __init__(self, f, read_data=True):
         self.read_data = read_data
@@ -67,7 +71,7 @@ class DfuseFile:
 
         return Image(
             target_prefix.alternate_setting,
-            target_prefix.target_name.decode('ascii') if has_name else None,
+            c_str_to_str(target_prefix.target_name) if has_name else None,
             elements
         )
 
