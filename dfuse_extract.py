@@ -205,6 +205,10 @@ def save_metadata(dfuse_file, metadata_file):
     metadata = [image_metadata(image) for image in dfuse_file.images]
     json.dump(metadata, metadata_file, sort_keys=True)
 
+    # json.dump doesn't print a trailing newline to make it a real line (by UNIX
+    # standards)
+    metadata_file.write('\n')
+
 def main():
     args = parse_args()
 
