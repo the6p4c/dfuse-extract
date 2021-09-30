@@ -141,6 +141,12 @@ def parse_args():
             'Each element is saved with the filename '
             '\'image<image index>_element<element index>_0x<address>.bin)\'.'
     )
+    actions.add_argument(
+        '--extract-single', action='store_const', dest='action', const='extract_single',
+        help='Extract each image\'s elements into the current directory. '
+            'Each element is saved with the filename '
+            '\'image<image index>_element<element index>_0x<address>.bin)\'.'
+    )
 
     parser.add_argument(
         '--ignore-crc', action='store_true',
@@ -184,6 +190,23 @@ def action_extract(dfuse_file):
                 image_index, image_element_index, filename
             ))
 
+
+def action_extract_single(dfuse_file):
+    for image_index, image in enumerate(dfuse_file.images):
+        start_address = image.elements[0].address
+        # Make sure we start at the lowest address.
+        for image_element in image.elements:
+            if start_address > image_element.address:
+                start_address = image_element.address
+        filename = 'image{}_0x{:X}.bin'.format(image_index,start_address)
+        with open(filename, 'wb') as f:
+            for image_element_index, image_element in enumerate(image.elements):
+                f.seek(image_element.address - start_address)
+                f.write(image_element.data)
+                print('Extracted image {}, element {} to {} at {} '.format(image_index, image_element_index, filename,
+                                                                           image_element.address-start_address))
+
+
 def save_metadata(dfuse_file, metadata_file):
     def image_element_metadata(image_element):
         return {
@@ -222,7 +245,8 @@ def main():
         action_list(dfuse_file)
     elif args.action == 'extract':
         action_extract(dfuse_file)
-
+    elif args.action == 'extract_single':
+        action_extract_single(dfuse_file)
     if args.metadata_file:
         save_metadata(dfuse_file, args.metadata_file)
 
